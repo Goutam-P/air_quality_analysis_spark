@@ -1,9 +1,9 @@
+
 # Air Quality Analysis Using Spark
 
 ## 📌 Project Overview
 
 This project builds a modular, near-real-time air quality analysis pipeline using PySpark. It ingests sensor data via a TCP server, merges pollution and weather metrics, applies data cleaning and feature engineering, performs SQL-based trend analysis, trains predictive models with Spark MLlib, and visualizes results on an interactive dashboard. Outputs from each stage are stored independently (CSV/Parquet/PostgreSQL) to support parallel development and reproducibility.
- 
 
 ---
 
@@ -26,11 +26,10 @@ ingestion/
 │
 ├── ingestion_task1.py                # Spark job to stream and clean data
 ├── merge_and_sort.py                 # Spark job to merge sensor metrics into unified records
-├── tcp_log_file_streaming_server.py # Simulated TCP server sending log data
-├── test_reading_client.py           # Testing client for TCP connection
-├── locations_metadata.csv           # Optional metadata for location mapping
-├── download_from_s3.py              # Script to fetch files from S3
-
+├── tcp_log_file_streaming_server.py  # Simulated TCP server sending log data
+├── test_reading_client.py            # Testing client for TCP connection
+├── locations_metadata.csv            # Optional metadata for location mapping
+├── download_from_s3.py               # Script to fetch files from S3
 ```
 
 ---
@@ -63,15 +62,11 @@ pip install -r requirements.txt
 python ingestion/download_from_s3.py
 ```
 
-This script pulls required input data such as logs or weather data from an S3 bucket to your local environment.
-
 ### Step 2: Run the Simulated TCP Server
 
 ```bash
 python ingestion/tcp_log_file_streaming_server.py
 ```
-
-This simulates a real-time stream of air quality sensor logs (PM2.5, etc.).
 
 ### Step 3: Ingest and Preprocess Streamed Data
 
@@ -79,22 +74,107 @@ This simulates a real-time stream of air quality sensor logs (PM2.5, etc.).
 spark-submit ingestion/ingestion_task1.py
 ```
 
-This script reads streamed data, applies watermarking, parses datetime fields, drops irrelevant columns, and validates schema.
-
 ### Step 4: Merge and Sort Metrics
 
 ```bash
 spark-submit ingestion/merge_and_sort.py
 ```
 
-This script merges multiple datasets from different batch files into a single, unified DataFrame, combining all metrics (PM2.5, temperature, humidity) by timestamp and region to produce a consolidated dataset for downstream processing.
-
-
 ---
 
 ## 📊 Output
 
 The output of this stage is a **cleaned and enriched DataFrame** written to:
-
 - Console (for debugging), and/or
 - Local Parquet/CSV directory (e.g., `/ingestion/data/pending/final_task1`)
+
+---
+
+## 📊 Section 3: Spark SQL Exploration & Correlation Analysis
+
+### ✅ Objectives
+
+- Register cleaned feature-enhanced air quality data as a **temporary SQL view**.
+- Develop **complex analytical queries** to identify regions with the highest PM2.5 levels.
+- Perform **trend analysis** using **SQL window functions** (`ROW_NUMBER()`, `LAG()`, `LEAD()`).
+- Implement a **UDF-based Air Quality Index (AQI) classification** to assess pollution risk levels.
+- Save all outputs into organized CSV files.
+
+---
+
+## 🧩 Queries and Operations
+
+### 1. Top Locations by Highest Average PM2.5
+
+Using a CTE and MAX aggregation to find regions with the highest average:
+
+```python
+WITH avg_pm25_by_location AS (
+    SELECT location, ROUND(AVG(pm2_5),2) AS avg_pm25
+    FROM air_quality
+    WHERE date = '{latest_date}'
+    GROUP BY location
+)
+SELECT location, avg_pm25
+FROM avg_pm25_by_location
+WHERE avg_pm25 = (SELECT MAX(avg_pm25) FROM avg_pm25_by_location)
+```
+
+Saved Output: `/outputs/section3/top_locations_pm25.csv`
+
+---
+
+### 2. Peak Pollution Time Intervals
+
+Ordering PM2.5 readings in descending order:
+
+```python
+SELECT timestamp, location, pm2_5
+FROM air_quality
+WHERE pm2_5 IS NOT NULL
+ORDER BY pm2_5 DESC
+```
+
+Saved Output: `/outputs/section3/peak_pollution_times.csv`
+
+---
+
+### 3. Trend Analysis Using Window Functions
+
+Calculating trends using LAG, LEAD, and ROW_NUMBER:
+
+```python
+window_spec = Window.partitionBy("location").orderBy("timestamp")
+
+trend_df = df.withColumn("row_num", row_number().over(window_spec))              .withColumn("prev_pm2_5", lag(col("pm2_5")).over(window_spec))              .withColumn("next_pm2_5", lead(col("pm2_5")).over(window_spec))              .withColumn("pm2_5_change_prev", col("pm2_5") - col("prev_pm2_5"))              .withColumn("pm2_5_change_next", col("next_pm2_5") - col("pm2_5"))              .withColumn("trend", when(col("pm2_5_change_next") > 0, "Increasing")
+                                  .when(col("pm2_5_change_next") < 0, "Decreasing")
+                                  .otherwise("Stable"))
+```
+
+Saved Output: `/outputs/section3/trend_analysis_pm25.csv`
+
+---
+
+### 4. Air Quality Index (AQI) Classification
+
+Custom UDF for classifying air quality:
+
+```python
+def classify_aqi(pm2_5_value):
+    if pm2_5_value is None:
+        return "Unknown"
+    elif pm2_5_value <= 12:
+        return "Good"
+    elif pm2_5_value <= 35.4:
+        return "Moderate"
+    else:
+        return "Unhealthy"
+
+aqi_udf = udf(classify_aqi, StringType())
+
+aqi_classified_df = df.withColumn("AQI_Category", aqi_udf(col("pm2_5")))
+```
+
+Saved Output: `/outputs/section3/aqi_classification.csv`
+
+---
