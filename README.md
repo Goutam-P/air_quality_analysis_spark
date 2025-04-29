@@ -276,3 +276,85 @@ predictions.select("timestamp", "location", "label", "prediction") \
     .write.mode("overwrite").option("header", "true") \
     .csv("../outputs/section4/final_predictions")
 ```
+
+
+# Section 5:
+## Objectives
+Integrate the full pipeline from raw ingestion to model predictions.
+
+Generate interactive charts that communicate trends, spikes, and air quality levels effectively.
+
+Store final outputs and reports in CSV format for future analysis or external use.
+
+## Pipeline Integration Summary
+The complete end-to-end workflow (section5_pipeline.py) combines all modular components:
+
+Ingestion: Reads, cleans, and merges sensor data.
+
+Transformation: Handles outliers and performs feature enrichment.
+
+SQL Analysis: Identifies trends, hotspots, and classifications using Spark SQL.
+
+ML Modeling: Predicts AQI categories using Random Forest classifier.
+
+Output: Stores results in outputs/final_output.csv.
+
+```
+python section5_pipeline.py
+
+```
+
+The final predictions stored in outputs/final_output.csv are used to visualize air quality trends using Plotly in Google Colab.
+
+ # 🧩 Visualizations
+
+ ## 1. Time-Series Line Chart – PM2.5 Concentration by Location
+ ```
+ import plotly.express as px
+
+fig = px.line(df, x='timestamp', y='pm2_5', color='location',
+              title='Time-Series of PM2.5 Concentration by Location')
+fig.show()
+
+```
+ ## 2. AQI Category Pie Chart – Risk Distribution
+
+ ```
+fig = px.pie(df, names='AQI_Category', title='AQI Category Distribution')
+fig.show()
+
+
+```
+ ## 3. PM2.5 Spike Events – Above Safe Threshold (150 µg/m³)
+ ```
+ spikes = df[df['pm2_5'] > 150]
+
+fig = px.scatter(spikes, x='timestamp', y='pm2_5', color='location',
+                 title='PM2.5 Spike Events (Above 150 µg/m³)')
+fig.show()
+
+
+```
+
+ ## 4. Correlation Heatmap – PM2.5, Temperature, Humidity
+ ```
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+sns.heatmap(df[['pm2_5', 'temperature', 'humidity']].corr(), annot=True, cmap='coolwarm')
+plt.title('Correlation Heatmap: PM2.5, Temp, Humidity')
+plt.show()
+
+```
+
+# 🎯 Outcome of Section 5
+
+A complete, reproducible pipeline with:
+
+Ingested and enriched data
+
+Analytical and ML-driven insights
+
+Visualizations for stakeholder reporting
+
+All outputs saved for monitoring and future processing

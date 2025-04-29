@@ -6,41 +6,42 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def main():
+
+def merge_data(df_pandas=None):
+    """
+    Reads all processed micro-batches, merges, sorts by timestamp, and returns a pandas DataFrame.
+    """
     spark = SparkSession.builder \
         .appName("BatchMergingAndSorting") \
         .getOrCreate()
 
     try:
-        # 1. Define path and verify
         base_path = "/workspaces/air_quality_analysis_spark/ingestion/data/processed"
-        input_path = f"{base_path}/batch_*/*.csv"  # Updated pattern
-        
+        input_path = f"{base_path}/batch_*/*.csv"
+
         if not os.path.exists(base_path):
             raise FileNotFoundError(f"Base directory not found: {base_path}")
-        
-        # 2. Read all batch files
-        merged_df = spark.read.csv(
-            input_path,
-            header=True,
-            inferSchema=True
-        )
-        logger.info(f"Read {merged_df.count()} records")
 
-        # 3. Sort and save
+        merged_df = spark.read.csv(input_path, header=True, inferSchema=True)
+        logger.info(f"Read {merged_df.count()} records from {input_path}")
+
+        sorted_df = merged_df.sort("timestamp")
         output_path = f"/workspaces/air_quality_analysis_spark/ingestion/data/pending/final_task1"
-        merged_df.sort("timestamp").coalesce(1).write \
-            .option("header", "true") \
-            .mode("overwrite") \
-            .csv(output_path)
-        
+        sorted_df.coalesce(1).write.option(
+            "header", "true").mode("overwrite").csv(output_path)
+
         logger.info(f"Saved sorted data to {output_path}")
 
+        return sorted_df.toPandas()  # ✅ return as pandas for next steps in pipeline
+
     except Exception as e:
-        logger.error(f"Error: {str(e)}")
+        logger.error(f"Error in merge_data: {str(e)}")
         raise
+
     finally:
         spark.stop()
 
+
+# Optional standalone run
 if __name__ == "__main__":
-    main()
+    merge_data()
