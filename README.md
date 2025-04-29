@@ -178,3 +178,101 @@ aqi_classified_df = df.withColumn("AQI_Category", aqi_udf(col("pm2_5")))
 Saved Output: `/outputs/section3/aqi_classification.csv`
 
 ---
+
+## Section 4:
+
+Section 4 focuses on building, training, and evaluating a predictive model using Spark MLlib to forecast Air Quality Index (AQI) categories based on sensor readings (temperature, humidity, and PM2.5 trends).
+
+## Steps Performed;
+
+1. Load Feature-Enhanced Dataset:
+```python
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.appName("Air Quality ML Modeling").getOrCreate()
+
+# Load the dataset generated in Task 2
+df = spark.read.option("header", "true").option("inferSchema", "true").csv("task2_feature_enhanced.csv")
+```
+
+2. Create AQI Category Label
+
+```python
+from pyspark.sql.functions import when
+
+# Define AQI categories based on PM2.5 values
+df = df.withColumn("AQI_Category",
+    when(df.pm2_5 <= 12, "Good")
+    .when(df.pm2_5 <= 35.4, "Moderate")
+    .otherwise("Unhealthy")
+)
+```
+
+3. Feature Selection and Label Preparation
+```python
+from pyspark.ml.feature import StringIndexer, VectorAssembler
+
+# Index AQI categories into numeric labels
+indexer = StringIndexer(inputCol="AQI_Category", outputCol="label")
+df = indexer.fit(df).transform(df)
+
+# Assemble features
+assembler = VectorAssembler(
+    inputCols=["temperature", "humidity", "pm2_5_lag_1", "pm2_5_rate_of_change"],
+    outputCol="features",
+    handleInvalid="skip"
+)
+
+final_df = assembler.transform(df)
+```
+
+4. Train-Test Split:
+# Split data
+```python
+train_data, test_data = final_df.randomSplit([0.7, 0.3], seed=42)
+```
+5. Train Random Forest Classifier
+```python
+from pyspark.ml.classification import RandomForestClassifier
+```
+
+# Initialize and train the model
+```python
+rf = RandomForestClassifier(featuresCol="features", labelCol="label", numTrees=50, maxDepth=5)
+model = rf.fit(train_data)
+```
+
+6. Evaluate Model Performance
+```python
+from pyspark.ml.evaluation import MulticlassClassificationEvaluator
+
+# Predictions
+predictions = model.transform(test_data)
+
+# Evaluators
+evaluator_acc = MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction", metricName="accuracy")
+evaluator_f1 = MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction", metricName="f1")
+
+# Results
+accuracy = evaluator_acc.evaluate(predictions)
+f1_score = evaluator_f1.evaluate(predictions)
+
+print(f"\u2705 Model Evaluation Results:")
+print(f" - Accuracy: {accuracy:.4f}")
+print(f" - F1 Score: {f1_score:.4f}")
+```
+
+Result Achieved:
+
+Accuracy: 96.26%
+
+F1 Score: 96.12%
+
+
+## Final Output Saved
+# Save important fields (timestamp, location, true label, predicted label)
+```python
+predictions.select("timestamp", "location", "label", "prediction") \
+    .write.mode("overwrite").option("header", "true") \
+    .csv("../outputs/section4/final_predictions")
+```
