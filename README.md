@@ -90,6 +90,122 @@ The output of this stage is a **cleaned and enriched DataFrame** written to:
 
 ---
 
+#  Section 2: Data Aggregation, Transformation & Trend Feature Engineering
+
+## ✅ Objectives
+
+- Handle outliers and missing data in pollution and weather sensor readings.
+- Apply Z-score normalization to key numerical features.
+- Perform daily and hourly aggregations to analyze time-based trends.
+- Create rolling averages, lag features, and rate-of-change indicators.
+- Save cleaned and feature-enhanced datasets for SQL and ML use.
+
+---
+
+## 🔧 Data Preprocessing Steps
+
+### 1. Load Cleaned Output from Section 1
+```python
+import pandas as pd
+
+# Load enriched and cleaned dataset (merged PM2.5, temperature, humidity)
+df = pd.read_csv("/workspaces/air_quality_analysis_spark/ingestion/data/pending/final_task1/part-00000-*.csv", parse_dates=["timestamp"])
+```
+
+---
+
+### 2. Handle Outliers
+```python
+import numpy as np
+
+# Remove or cap implausible values
+df = df[df["pm2_5"] < 1000]
+df["temperature"] = np.where(df["temperature"] > 60, np.nan, df["temperature"])
+df["humidity"] = np.where((df["humidity"] > 100) | (df["humidity"] < 0), np.nan, df["humidity"])
+```
+
+---
+
+### 3. Impute Missing Values (Median)
+```python
+df["pm2_5"].fillna(df["pm2_5"].median(), inplace=True)
+df["temperature"].fillna(df["temperature"].median(), inplace=True)
+df["humidity"].fillna(df["humidity"].median(), inplace=True)
+```
+
+---
+
+### 4. Normalize Key Features (Z-score)
+```python
+for col in ["pm2_5", "temperature", "humidity"]:
+    df[f"{col}_zscore"] = (df[col] - df[col].mean()) / df[col].std()
+```
+
+---
+
+### 5. Time-Based Aggregations
+```python
+# Extract date and hour for groupings
+df["date"] = df["timestamp"].dt.date
+df["hour"] = df["timestamp"].dt.hour
+
+# Daily Aggregates
+daily_avg = df.groupby(["date", "location"]).agg({
+    "pm2_5": "mean",
+    "temperature": "mean",
+    "humidity": "mean"
+}).reset_index()
+daily_avg.to_csv("/workspaces/air_quality_analysis_spark/ingestion/data/pending/final_task2/daily_aggregates.csv", index=False)
+
+# Hourly Aggregates
+hourly_avg = df.groupby(["date", "hour", "location"]).agg({
+    "pm2_5": "mean",
+    "temperature": "mean",
+    "humidity": "mean"
+}).reset_index()
+hourly_avg.to_csv("/workspaces/air_quality_analysis_spark/ingestion/data/pending/final_task2/hourly_aggregates.csv", index=False)
+```
+
+---
+
+### 6. Rolling Averages, Lag Features, and Rate-of-Change
+```python
+# Sort for window operations
+df.sort_values(by=["location", "timestamp"], inplace=True)
+
+# Create rolling average (3-hour window), lag, and rate-of-change for PM2.5
+df["pm2_5_rolling_avg_3"] = df.groupby("location")["pm2_5"].transform(lambda x: x.rolling(3, min_periods=1).mean())
+df["pm2_5_lag_1"] = df.groupby("location")["pm2_5"].shift(1)
+df["pm2_5_rate_of_change"] = df["pm2_5"] - df["pm2_5_lag_1"]
+```
+
+---
+
+### 📂 Save Output
+```python
+# Final enriched dataset
+output_path = "/workspaces/air_quality_analysis_spark/ingestion/data/pending/final_task2/task2_feature_enhanced.csv"
+df.to_csv(output_path, index=False)
+```
+
+---
+
+## 🎯 Outcome of Section 2
+
+- Outliers capped and missing values imputed
+- Features normalized with Z-score
+- Time-based aggregations stored for trend analysis
+- Rolling and lagged metrics computed for ML models
+- Final dataset ready for SQL exploration and modeling in Section 3
+
+Files Generated:
+- `task2_feature_enhanced.csv`
+- `daily_aggregates.csv`
+- `hourly_aggregates.csv`
+
+
+
+
 ## 📊 Section 3: Spark SQL Exploration & Correlation Analysis
 
 ### ✅ Objectives
